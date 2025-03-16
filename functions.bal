@@ -87,7 +87,8 @@ isolated function generateText(string query, string context) returns string|erro
             {role: "user", "content": query}]
     };
 
-    chat:CreateChatCompletionResponse chatResult = check chatClient->/deployments/["gpt4o-mini"]/chat/completions.post("2023-12-01-preview", chatRequest);
+    chat:CreateChatCompletionResponse chatResult = 
+        check chatClient->/deployments/["gpt4o-mini"]/chat/completions.post("2023-12-01-preview", chatRequest);
     ChatResponseChoice[] choices = check chatResult.choices.ensureType();
     string? chatResponse = choices[0].message?.content;
 
