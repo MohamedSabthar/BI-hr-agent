@@ -1,4 +1,3 @@
-import ballerina/io;
 import ballerinax/azure.openai.chat;
 import ballerinax/azure.openai.embeddings;
 import ballerinax/pinecone.vector;
@@ -17,6 +16,8 @@ final chat:Client chatClient = check new (
     serviceUrl = AZURE_SERVICE_URL
 );
 
+final string embedding = "text-embed";
+
 isolated vector:QueryRequest queryRequest = {
     topK: 4,
     includeMetadata: true
@@ -26,34 +27,31 @@ public type Metadata record {
     string text;
 };
 
+public type ChatResponseChoice record {|
+    chat:ChatCompletionResponseMessage message?;
+    chat:ContentFilterChoiceResults content_filter_results?;
+    int index?;
+    string finish_reason?;
+    anydata...;
+|};
+
 isolated function llmChat(string query) returns string|error {
 
     lock {
+        embeddings:Deploymentid_embeddings_body embeddingsBody = {input: query};
+        embeddings:Inline_response_200 embeddingsResult =
+            check embeddingsClient->/deployments/[embedding]/embeddings.post("2023-03-15-preview", embeddingsBody);
 
-        embeddings:Deploymentid_embeddings_body embeddingsBody = {
-            input: query
-        };
-
-        final string embedding = "text-embed";
-
-        embeddings:Inline_response_200 embeddingsResult = check embeddingsClient->/deployments/[embedding]/embeddings.post("2023-03-15-preview", embeddingsBody);
-
-        decimal[] dec = embeddingsResult.data[0].embedding;
-
-        float[] floatArray = [];
-
-        foreach decimal d in dec {
-            floatArray.push(<float>d);
+        decimal[] embeddingsDecimal = embeddingsResult.data[0].embedding;
+        float[] embeddingsFloat = [];
+        foreach decimal d in embeddingsDecimal {
+            embeddingsFloat.push(<float>d);
         }
-
-        queryRequest.vector = floatArray;
+        queryRequest.vector = embeddingsFloat;
 
         vector:QueryResponse response = check pineconeVectorClient->/query.post(queryRequest);
-
         vector:QueryMatch[]? matches = response.matches;
-
         if (matches == null) {
-            io:println("No matches found");
             return error("No matches found");
         }
 
@@ -63,31 +61,22 @@ isolated function llmChat(string query) returns string|error {
             context = context.concat(metadata.text);
         }
 
-        string systemPrompt = string `You are an HR Policy Assistant that provides employees with accurate answers based on company HR policies. Your responses must be clear and strictly based on the provided context. ${context}`;
-
+        string systemPrompt = string `You are an HR Policy Assistant that provides employees with accurate answers
+        based on company HR policies.Your responses must be clear and strictly based on the provided context.
+        ${context}`;
         chat:CreateChatCompletionRequest chatRequest = {
             messages: [
-                {
-                    role: "system",
-                    "content": systemPrompt
-                },
-                {
-                    role: "user",
-                    "content": query
-                }
-            ]
+                {role: "system", "content": systemPrompt},
+                {role: "user", "content": query}]
         };
 
         chat:CreateChatCompletionResponse chatResult = check chatClient->/deployments/["gpt4o-mini"]/chat/completions.post("2023-12-01-preview", chatRequest);
-        record {|chat:ChatCompletionResponseMessage message?; chat:ContentFilterChoiceResults content_filter_results?; int index?; string finish_reason?; anydata...;|}[] choices = check chatResult.choices.ensureType();
+        ChatResponseChoice[] choices = check chatResult.choices.ensureType();
         string? chatResponse = choices[0].message?.content;
 
         if (chatResponse == null) {
             return error("No chat response found");
         }
-
-        io:println("LLM chat Response: ", chatResponse);
         return chatResponse;
-
     }
 }

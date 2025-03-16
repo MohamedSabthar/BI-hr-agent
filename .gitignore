@@ -2,6 +2,7 @@
 # It contains compiler-generated artifacts and the final executable if this is an application package.
 target/
 
+.vscode/
 # Ballerina maintains the compiler-generated source code here.
 # Remove this if you want to commit generated sources.
 generated/
